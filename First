@@ -1,0 +1,96 @@
+import argparse
+import subprocess
+import re
+from functools import wraps
+
+def except_wlan0(func):
+	wraps(func)
+
+	def inner(*args):
+		try:
+			return func(*args)
+		except subprocess.CalledProcessError:
+			print("[!] Wlan0 does not exist")
+
+		return None
+	return inner
+
+class Parser:
+	def __init__(self):
+		self.parser = argparse.ArgumentParser(description="[+] Mac Address Changer")
+		self.parser.add_argument("--save_file", help="Save your old Mac Address to a file", action="store_true")
+		self.parser.add_argument("--eth0", help="Change the MAC address of eth0", action="store_true")
+		self.parser.add_argument("--wlan0", help="Change the MAC address of wlan0", action="store_true")
+
+		self.parse = self.parser.parse_args()
+
+	def get_save_file(self):
+		return self.parse.save_file
+
+	def get_eth0(self):
+		return self.parse.eth0
+
+	def get_wlan0(self):
+		return self.parse.wlan0
+
+	def get_eth0_and_wlan0(self):
+		return self.parse.eth0 and self.parse.wlan0
+
+class MacChanger:
+	def __init__(self):
+		self.parser = Parser()
+
+	def get_mac_to_change(self):
+
+		if self.parser.get_eth0():
+			return "eth0"
+
+		elif self.parser.get_wlan0():
+			return "wlan0"
+
+		return None
+
+	def verify_mac_address(self, mac):
+		return re.match("(?:[0-9a-fA-F]:?){12}", mac) != None
+
+	def change_mac_address(self, name, mac_address):
+		subprocess.call(["ifconfig", name, "down"])
+		subprocess.call(["ifconfig", name, "hw", "ether", mac_address])
+		subprocess.call(["ifconfig", name, "up"])
+
+	@except_wlan0
+	def get_mac_address(self, name):
+		if not name:
+			return None
+
+		out = subprocess.check_output(["ifconfig", name], stderr=subprocess.PIPE).decode().strip()
+		return re.findall("ether.*", out)[0].split(" ")[1]
+
+	def make_file(self):
+		mac = self.get_mac_address(self.get_mac_to_change())
+		FILE_NAME = "Mac_Address.txt"
+		
+		if mac:
+			print("[+] Making file")
+
+			with open(FILE_NAME, "w") as file:
+				file.write(f"[+] Mac Address -> {mac}\n")
+
+
+	def mac_changer_main(self):
+		name = self.get_mac_to_change()
+		mac = input("Enter a Mac Address to use -> ")
+		
+		if not name or not self.verify_mac_address(mac):
+			print("[!] Could not change mac address. Exiting")
+			return
+		
+		if self.parser.get_save_file():
+			self.make_file()
+
+		print(f"[+] Changing Mac Address to -> {mac}")
+		self.change_mac_address(name, mac)
+
+
+if __name__ == '__main__':
+	MacChanger().mac_changer_main()
